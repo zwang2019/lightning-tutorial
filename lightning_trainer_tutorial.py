@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
 from torch import nn, optim
-
+from torch.utils.data import random_split, DataLoader
 
 
 class NN(L.LightningModule):
@@ -30,17 +30,17 @@ class NN(L.LightningModule):
 
     def training_step(self, batch, batch_idx):
         loss, y_hat, y = self._common_step(batch, batch_idx)
-        self.log('train_loss', loss)
+        self.log('train_loss', loss, prog_bar=True, sync_dist=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
         loss, y_hat, y = self._common_step(batch, batch_idx)
-        self.log('val_loss', loss)
+        self.log('val_loss', loss, prog_bar=True, sync_dist=True)
         return loss
 
     def test_step(self, batch, batch_idx):
         loss, y_hat, y = self._common_step(batch, batch_idx)
-        self.log('test_loss', loss)
+        self.log('test_loss', loss, prog_bar=True,  sync_dist=True)
         return loss
 
     def predict_step(self, batch, batch_idx):
@@ -50,11 +50,6 @@ class NN(L.LightningModule):
         preds = torch.argmax(y_hat, dim=1)
         return preds
 
-    def training_epoch_end(self, outputs):
-        pass
-
-    def validation_epoch_end(self, outputs):
-        pass
 
     def on_train_epoch_end(self) -> None:
         pass
@@ -66,6 +61,34 @@ class NN(L.LightningModule):
         return optim.Adam(self.parameters(), lr=0.001)
 
 
+
+
+
+if __name__ == '__main__':
+
+    # device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    # Hyperparameters
+    input_size = 784
+    num_classes = 10
+    learning_rate = 0.001
+    batch_size = 64
+    num_epochs = 3
+
+    # Load Data
+    entire_dataset = datasets.MNIST(root='dataset/', train=True, transform=transforms.ToTensor(), download=True)
+    train_ds, val_ds = random_split(entire_dataset, [50000, 10000])
+    test_ds = datasets.MNIST(root='dataset/', train=False, transform=transforms.ToTensor(), download=True)
+
+    train_loader = DataLoader(dataset=train_ds, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(dataset=val_ds, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(dataset=test_ds, batch_size=batch_size, shuffle=False)
+
+    # Initialize model
+    model = NN(input_size=input_size, num_classes=num_classes)
+    trainer = L.Trainer(accelerator='gpu', devices=1, max_epochs=num_epochs)
+    trainer.fit(model, train_loader, val_loader)
 
 
 
