@@ -12,22 +12,6 @@ import torchmetrics
 from torchmetrics import Metric, Accuracy, F1Score
 from torchmetrics.functional import accuracy
 
-class MyAccuracy(Metric):
-    def __init__(self):
-        super().__init__()
-        self.add_state("correct", default=torch.tensor(0), dist_reduce_fx="sum")
-        self.add_state("total", default=torch.tensor(0), dist_reduce_fx="sum")
-
-    def update(self, preds, target) -> None:
-        preds = torch.argmax(preds, dim=1)
-        assert preds.shape == target.shape
-        self.correct += torch.sum(preds == target)
-        self.total += target.numel()
-
-    def compute(self) -> Any:
-        return self.correct.float() / self.total.float()
-
-
 
 class NN(L.LightningModule):
     def __init__(self, input_size, num_classes):
@@ -36,7 +20,6 @@ class NN(L.LightningModule):
         self.fc2 = nn.Linear(50, num_classes)
         self.accuracy = Accuracy(task='multiclass', num_classes=num_classes)
         self.f1_score = F1Score(task='multiclass', num_classes=num_classes)
-        self.my_accuracy = MyAccuracy()
         self.training_step_y_hat = []
         self.training_step_y = []
         self.validation_step_y_hat = []
@@ -56,12 +39,9 @@ class NN(L.LightningModule):
 
     def training_step(self, batch, batch_idx):
         loss, y_hat, y = self._common_step(batch, batch_idx)
-        acc = self.my_accuracy(y_hat, y)
-        acc_2 = self.accuracy(y_hat, y)
-        self.log_dict({'train_acc': acc, 'train_acc_2': acc_2}, on_step=False, on_epoch=True, prog_bar=True, sync_dist=True)
+        self.log('train_loss', loss, prog_bar=True, sync_dist=True)
         self.training_step_y_hat.append(y_hat)
         self.training_step_y.append(y)
-
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -117,37 +97,54 @@ class NN(L.LightningModule):
 
 
 
+class MnistDataModule(L.LightningDataModule):
+    def __init__(self, data_dir, batch_size, num_workers):
+        super().__init__()
+        self.data_dir = data_dir
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+
+    def prepare_data(self):
+        datasets.MNIST(root=self.data_dir, train=True, download=True)
+        datasets.MNIST(root=self.data_dir, train=False, download=True)
+
+    def setup(self, stage):
+        if stage == 'fit' or stage is None:
+            entire_dataset = datasets.MNIST(root=self.data_dir, train=True, transform=transforms.ToTensor(), download=False)
+            self.train_ds, self.val_ds = random_split(entire_dataset, [50000, 10000])
+
+        if stage == 'test' or stage is None:
+            self.test_ds = datasets.MNIST(root=self.data_dir, train=False, transform=transforms.ToTensor(), download=False)
+
+    def train_dataloader(self):
+        return DataLoader(dataset=self.train_ds, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
+
+    def val_dataloader(self):
+        return DataLoader(dataset=self.val_ds, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
+
+    def test_dataloader(self):
+        return DataLoader(dataset=self.test_ds, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
+
 
 
 if __name__ == '__main__':
 
-    # device
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    class CONFIG:
+        batch_size = 64
+        num_workers = 1
+        data_dir = 'dataset/'
+        input_size = 784
+        num_classes = 10
+        learning_rate = 0.001
+        num_epochs = 3
 
-    # Hyperparameters
-    input_size = 784
-    num_classes = 10
-    learning_rate = 0.001
-    batch_size = 64
-    num_epochs = 4
-
-    # Load Data
-    entire_dataset = datasets.MNIST(root='dataset/', train=True, transform=transforms.ToTensor(), download=True)
-    train_ds, val_ds = random_split(entire_dataset, [50000, 10000])
-    test_ds = datasets.MNIST(root='dataset/', train=False, transform=transforms.ToTensor(), download=True)
-
-    train_loader = DataLoader(dataset=train_ds, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(dataset=val_ds, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(dataset=test_ds, batch_size=batch_size, shuffle=False)
 
     # Initialize model
-    model = NN(input_size=input_size, num_classes=num_classes)
-    trainer = L.Trainer(accelerator='gpu', devices=1, max_epochs=num_epochs)
-    trainer.fit(model, train_loader, val_loader)
+    my_dm = MnistDataModule(data_dir=CONFIG.data_dir, batch_size=CONFIG.batch_size, num_workers=CONFIG.num_workers)
+    model = NN(input_size=CONFIG.input_size, num_classes=CONFIG.num_classes)
 
+    trainer = L.Trainer(accelerator='gpu', devices=1, strategy='auto', max_epochs=CONFIG.num_epochs)
 
-
-
-
-
+    trainer.fit(model, my_dm)
+    trainer.test(model, my_dm)
 
