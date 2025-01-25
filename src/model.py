@@ -11,8 +11,9 @@ from torchmetrics import Metric, Accuracy, F1Score
 
 
 class NN(L.LightningModule):
-    def __init__(self, input_size, num_classes):
+    def __init__(self, input_size, num_classes, learning_rate):
         super().__init__()
+        self.lr = learning_rate
         self.fc1 = nn.Linear(input_size, 50)
         self.fc2 = nn.Linear(50, num_classes)
         self.accuracy = Accuracy(task='multiclass', num_classes=num_classes)
@@ -105,4 +106,4 @@ class NN(L.LightningModule):
         return None
 
     def configure_optimizers(self):
-        return optim.Adam(self.parameters(), lr=0.001)
+        return optim.Adam(self.parameters(), lr=self.lr)
