@@ -1,11 +1,8 @@
 import lightning as L
 import torch
 import torch.nn.functional as F
-import torchvision.datasets as datasets
-import torchvision.transforms as transforms
+
 from torch import nn, optim
-from torch.utils.data import random_split, DataLoader
-import torchmetrics
 from torchmetrics import Metric, Accuracy, F1Score
 
 

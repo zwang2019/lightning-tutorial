@@ -1,6 +1,5 @@
 import lightning as L
 import torch
-import torch.nn.functional as F
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
 from torch.utils.data import random_split, DataLoader
