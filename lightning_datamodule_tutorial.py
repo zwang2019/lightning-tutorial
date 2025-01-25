@@ -54,6 +54,8 @@ class NN(L.LightningModule):
     def test_step(self, batch, batch_idx):
         loss, y_hat, y = self._common_step(batch, batch_idx)
         self.log('test_loss', loss, prog_bar=True,  sync_dist=True)
+        self.validation_step_y_hat.append(y_hat)
+        self.validation_step_y.append(y)
         return loss
 
     def predict_step(self, batch, batch_idx):
@@ -86,6 +88,20 @@ class NN(L.LightningModule):
         acc = self.accuracy(y_hat, y)
         f1 = self.f1_score(y_hat, y)
         self.log_dict({'val_loss': loss, 'val_accuracy': acc, 'val_f1_score': f1}, on_epoch=True, prog_bar=True, sync_dist=True)
+        # free up the memory
+        self.validation_step_y_hat.clear()
+        self.validation_step_y.clear()
+        del y_hat, y
+        return None
+
+    def on_test_epoch_end(self) -> None:
+        y_hat = torch.cat(self.validation_step_y_hat)
+        y = torch.cat(self.validation_step_y)
+        # do something with all validation_step outputs
+        loss = F.cross_entropy(y_hat, y)
+        acc = self.accuracy(y_hat, y)
+        f1 = self.f1_score(y_hat, y)
+        self.log_dict({'test_loss': loss, 'test_accuracy': acc, 'test_f1_score': f1}, on_epoch=True, prog_bar=True, sync_dist=True)
         # free up the memory
         self.validation_step_y_hat.clear()
         self.validation_step_y.clear()
@@ -137,7 +153,6 @@ if __name__ == '__main__':
         num_classes = 10
         learning_rate = 0.001
         num_epochs = 3
-
 
     # Initialize model
     my_dm = MnistDataModule(data_dir=CONFIG.data_dir, batch_size=CONFIG.batch_size, num_workers=CONFIG.num_workers)
