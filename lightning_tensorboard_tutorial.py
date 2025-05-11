@@ -9,16 +9,22 @@ from src.dataset import MnistDataModule
 from src.model import NN
 from src.callbacks import MyPrintingCallback, EarlyStopping, Timer, ModelCheckpoint
 
+from lightning.pytorch.loggers import TensorBoardLogger
+
 if __name__ == '__main__':
 
     my_dm = MnistDataModule(data_dir=CONFIG.data_dir, batch_size=CONFIG.batch_size, num_workers=CONFIG.num_workers)
     model = NN(input_size=CONFIG.input_size, num_classes=CONFIG.num_classes, learning_rate=CONFIG.learning_rate)
 
+    # Callbacks
     early_stopping = EarlyStopping(monitor='val_loss', patience=10, mode='min')
     timer = Timer()
     checkpoint_callback = ModelCheckpoint(monitor='val_accuracy', mode='max', save_top_k=1, verbose=True, dirpath='./models', filename='{epoch:02d}-{val_accuracy:.6f}')
 
-    trainer = L.Trainer(accelerator='gpu', devices=1, strategy='auto', max_epochs=CONFIG.num_epochs, callbacks=[checkpoint_callback, early_stopping, timer])
+    # Logger
+    logger = TensorBoardLogger(save_dir='./tensorboardlogger', name='tutorial_model_v0', version=1)
+
+    trainer = L.Trainer(logger=logger, accelerator='gpu', devices=1, strategy='auto', max_epochs=CONFIG.num_epochs, callbacks=[checkpoint_callback, early_stopping, timer])
     trainer.fit(model, my_dm)
     trainer.test(model, my_dm)
 
